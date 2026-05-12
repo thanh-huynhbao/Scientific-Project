@@ -10,6 +10,14 @@
 - Increasing the number of demonstrations beyond a certain point yields minimal benefits.
 - When the number of **env-obj** pairs is smaller, fewer total demonstrations are needed to reach saturation (graph going down).
 - The recommendation for tasks with the similar difficulty to pour water, etc is `**50 demonstrations per env-obj**`
+### 2.3 Experience of using IMI to collect data
+##### 2.3.1 Random initial pose is crucial
+- It is essential to randomize the initial pose of the hand-held gripper, including its height and orientation.
+- The initial position range of objects should be as extensive as possible.
+##### 2.3.2 Select an environment with rich visual features
+- UMI relies on SLAM for camera pose tracking, sufficient visual features-such as dark areas or blank walls- can lead to tracking failures.
+- This problem can be addressed by using the visualization tool Pangolin to make sure that the env having enough features. 
+##### 2.3.3 Use appropriately sized manipulation objects
 ## 3. Data Collection Methods
 *   **3.1 Teleoperation**
 *   **3.2 Hand-held Gripper**
