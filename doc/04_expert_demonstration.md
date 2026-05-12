@@ -14,5 +14,4 @@
 *   **3.1 Teleoperation**
 *   **3.2 Hand-held Gripper**
 ## 4. References
-[1] DATA SCALING LAWS IN IMITATION LEARNING FOR
-ROBOTIC MANIPULATION
+[1] Xie, C., Wang, Z., Li, S., Chi, C., Song, S., & Levine, S. (2025). *Data scaling laws in imitation learning for robotic manipulation*. International Conference on Learning Representations (ICLR). https://doi.org/10.48550/arXiv.2410.18647
