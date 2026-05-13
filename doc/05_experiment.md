@@ -1,4 +1,4 @@
-# V. [Experiment](./05_experiment.md)
+# V. [Experiment]
 ## 1. Experiement #1
 - **Title**: Data collection and policy training in AIC simulation
 - **Method**:
