@@ -12,6 +12,14 @@
 - The recommendation for tasks with the similar difficulty to pour water, etc is `**50 demonstrations per env-obj**`
 ## 3. Data Collection Methods
 ### 3.1 Teleoperation
+1. VR controllers
+- **Read**: VR_01/02/03
+- **Questions**: Setup, Data Collection, Data synchronization, Latency, Filtering Methods? ,....
+2. 3D spacemouse
+3. Smartphones
+4. Puppeting devices
+5. Exoskeletons
+
 ### 3.2 Hand-held Gripper
 #### 3.1 Experience of using UMI to collect data
 ##### 3.1.1 Random initial pose is crucial
