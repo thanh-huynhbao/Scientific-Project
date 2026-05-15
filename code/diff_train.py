@@ -58,16 +58,27 @@ def load_checkpoint(checkpoint_path, policy, optimizer):
     print(f"Resumed from step {step}, loss was {ckpt['loss']:.3f}")
     return step
 
-def save_checkpoint(checkpoint_dir, step, policy, optimizer, loss):
+def save_checkpoint(checkpoint_dir, step, policy, optimizer, loss,
+                    preprocessor=None, postprocessor=None):
     ckpt_path = checkpoint_dir / f"step_{step:06d}"
     ckpt_path.mkdir(exist_ok=True)
+
+    # 1. Save raw state dicts (lightweight, resumable)
     torch.save({
         "step": step,
         "policy_state_dict": policy.state_dict(),
         "optimizer_state_dict": optimizer.state_dict(),
         "loss": loss,
     }, ckpt_path / "checkpoint.pt")
-    print(f"Checkpoint saved at step {step}")
+
+    # 2. Save full pretrained model (inference-ready)
+    policy.save_pretrained(ckpt_path)
+    if preprocessor is not None:
+        preprocessor.save_pretrained(ckpt_path)
+    if postprocessor is not None:
+        postprocessor.save_pretrained(ckpt_path)
+
+    print(f"Checkpoint saved at step {step} → {ckpt_path}")
 
 def make_policy(input_features, output_features, down_dims, embed_dim, horizon):
     cfg = DiffusionConfig(
@@ -84,7 +95,8 @@ def make_policy(input_features, output_features, down_dims, embed_dim, horizon):
     return cfg, policy
 
 def train(policy, preprocessor, optimizer, dataloader, ckpt_dir,
-          training_steps, log_freq, save_freq, label, plotter=None):
+          training_steps, log_freq, save_freq, label,
+          postprocessor=None, plotter=None):   # ← add postprocessor
     step = 0
     done = False
     it = iter(dataloader)
@@ -105,12 +117,14 @@ def train(policy, preprocessor, optimizer, dataloader, ckpt_dir,
 
         if step % log_freq == 0:
             print(f"[{label}] step: {step:>6d}  loss: {loss.item():.3f}")
-        
+
         if plotter is not None:
             plotter.update(label, step, loss.item())
 
         if step % save_freq == 0 and step > 0:
-            save_checkpoint(ckpt_dir, step, policy, optimizer, loss.item())
+            save_checkpoint(ckpt_dir, step, policy, optimizer, loss.item(),
+                            preprocessor=preprocessor,      # ← pass through
+                            postprocessor=postprocessor)    # ← pass through
 
         step += 1
         if step >= training_steps:
@@ -120,8 +134,11 @@ def train(policy, preprocessor, optimizer, dataloader, ckpt_dir,
 
 
 def main():
-    plot_path = Path("/home/armi/LRobot/src/outputs/loss_plot.png")
-    plotter = LiveLossPlotter(save_path=plot_path, update_freq=1)
+    plot_path_50 = Path("/home/armi/LRobot/src/outputs/loss_plot_50.png")
+    plotter_50 = LiveLossPlotter(save_path=plot_path_50, update_freq=1)
+
+    plot_path_200 = Path("/home/armi/LRobot/src/outputs/loss_plot_200.png")
+    plotter_200 = LiveLossPlotter(save_path=plot_path_200, update_freq=1)
 
     device = torch.device("cuda")
     dataset_url = '/home/armi/LRobot/dataset/train_set'
@@ -168,9 +185,9 @@ def main():
 
     # ── Preprocessors ─────────────────────────────────────────────
     preprocessor_50,  postprocessor_50  = make_pre_post_processors(
-        cfg_50,  dataset_stats=dataset_metadata.stats, device='cpu')
+        cfg_50,  dataset_stats=dataset_metadata.stats, device='cuda')
     preprocessor_200, postprocessor_200 = make_pre_post_processors(
-        cfg_200, dataset_stats=dataset_metadata.stats, device='cpu')
+        cfg_200, dataset_stats=dataset_metadata.stats, device='cuda')
 
     # ── Datasets ──────────────────────────────────────────────────
     dataset_50 = LeRobotDataset(
@@ -183,9 +200,11 @@ def main():
     # ── Dataloaders ───────────────────────────────────────────────
     batch_size = 32
     dataloader_50  = torch.utils.data.DataLoader(
-        dataset_50,  batch_size=batch_size, shuffle=True, drop_last=True)
+        dataset_50,  batch_size=batch_size, shuffle=True, drop_last=True,
+        pin_memory=True, num_workers=4)
     dataloader_200 = torch.utils.data.DataLoader(
-        dataset_200, batch_size=batch_size, shuffle=True, drop_last=True)
+        dataset_200, batch_size=batch_size, shuffle=True, drop_last=True,
+        pin_memory=True, num_workers=4)
 
     # ── Optimizers ────────────────────────────────────────────────
     optimizer_50  = cfg_50.get_optimizer_preset().build(policy_50.parameters())
@@ -193,37 +212,37 @@ def main():
 
     # ── Training config ───────────────────────────────────────────
     log_freq  = 1
-    save_freq = 10000
-
-    # ── Train Policy 50 first ─────────────────────────────────────
-    policy_50.train()
-    policy_50.to(device)
-
-    train(policy_50, preprocessor_50, optimizer_50, dataloader_50,
-          ckpt_50, training_steps=50_000, log_freq=log_freq,
-          save_freq=save_freq, label="Policy 50", plotter=plotter)
-
-    policy_50.save_pretrained(out_50)
-    preprocessor_50.save_pretrained(out_50)
-    postprocessor_50.save_pretrained(out_50)
-    print(f"Policy 50 saved to {out_50}")
-
-    # Free GPU memory before starting policy 200
-    del policy_50, optimizer_50, dataloader_50, dataset_50
-    torch.cuda.empty_cache()
+    # save_freq = 1
 
     # ── Train Policy 200 second ───────────────────────────────────
     policy_200.train()
     policy_200.to(device)
 
     train(policy_200, preprocessor_200, optimizer_200, dataloader_200,
-          ckpt_200, training_steps=200_000, log_freq=log_freq,
-          save_freq=save_freq, label="Policy 200", plotter=plotter)
-
+        ckpt_200, training_steps=40_000, log_freq=log_freq,
+        save_freq=10000, label="Policy 200",
+        postprocessor=postprocessor_200, plotter=plotter_200) 
     policy_200.save_pretrained(out_200)
     preprocessor_200.save_pretrained(out_200)
     postprocessor_200.save_pretrained(out_200)
     print(f"Policy 200 saved to {out_200}")
+
+    # Free GPU memory before starting policy 200
+    del policy_200, optimizer_200, dataloader_200, dataset_200
+    torch.cuda.empty_cache()
+
+    # ── Train Policy 50 first ─────────────────────────────────────
+    policy_50.train()
+    policy_50.to(device)
+
+    train(policy_50, preprocessor_50, optimizer_50, dataloader_50,
+        ckpt_50, training_steps=10_000, log_freq=log_freq,
+        save_freq=5000, label="Policy 50",
+        postprocessor=postprocessor_50, plotter=plotter_50)    # ← add postprocessor
+    policy_50.save_pretrained(out_50)
+    preprocessor_50.save_pretrained(out_50)
+    postprocessor_50.save_pretrained(out_50)
+    print(f"Policy 50 saved to {out_50}")
 
     print("All done.")
 
